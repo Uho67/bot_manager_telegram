@@ -1,0 +1,174 @@
+import { Injectable, Logger } from '@nestjs/common';
+import { HttpService } from '@nestjs/axios';
+import { firstValueFrom } from 'rxjs';
+import { Context, Markup } from 'telegraf';
+import { CategoryService } from '@/api/catalog/category.service';
+import { ProductService } from '@/api/catalog/product.service';
+import { Product, Category, CategoryListItem } from '@/types';
+
+export type BotContext = Context;
+
+@Injectable()
+export class BotService {
+	private readonly logger = new Logger(BotService.name);
+
+	constructor(
+		private readonly categoryService: CategoryService,
+		private readonly productService: ProductService,
+		private readonly httpService: HttpService,
+	) { }
+
+	// ==================== Category Methods ====================
+
+	async getCategoryList(): Promise<CategoryListItem[]> {
+		return this.categoryService.getCategoryList();
+	}
+
+	async getCategoryById(categoryId: number): Promise<Category | null> {
+		return this.categoryService.getCategoryById(categoryId);
+	}
+
+	buildCategoryListButtons(categories: CategoryListItem[]) {
+		const sorted = [...categories].sort((a, b) => a.sort_order - b.sort_order);
+		return sorted.map((category) =>
+			[Markup.button.callback(`📂 ${category.name}`, `category/${category.id}`)]
+		);
+	}
+
+	buildCategoryContentButtons(category: Category) {
+		const sortedCategories = [...category.child_categories].sort((a, b) => a.sort_order - b.sort_order);
+		const sortedProducts = [...category.products].sort((a, b) => a.sort_order - b.sort_order);
+
+		return [
+			...sortedCategories.map((child) =>
+				[Markup.button.callback(`📂 ${child.name}`, `category/${child.id}`)]
+			),
+			...sortedProducts.map((product) =>
+				[Markup.button.callback(`📦 ${product.name}`, `product/${product.id}`)]
+			),
+		];
+	}
+
+	// ==================== Product Methods ====================
+
+	async getProductById(productId: number): Promise<Product | null> {
+		return this.productService.getProductById(productId);
+	}
+
+	async sendProduct(ctx: BotContext, product: Product): Promise<void> {
+		const message = this.formatProductMessage(product);
+
+		if (product.image) {
+			await this.sendProductWithImage(ctx, product, message);
+		} else {
+			await ctx.reply(message, { parse_mode: 'HTML' });
+		}
+	}
+
+	/**
+	 * Send product with image
+	 * - If image_file_id exists, use it directly (instant)
+	 * - If not, download image, upload to Telegram, and save file_id to API
+	 */
+	private async sendProductWithImage(
+		ctx: BotContext,
+		product: Product,
+		caption: string,
+	): Promise<void> {
+		if (product.image_file_id) {
+			try {
+				await ctx.replyWithPhoto(product.image_file_id, {
+					caption,
+					parse_mode: 'HTML',
+				});
+				return;
+			} catch (error) {
+				this.logger.warn(`Stored file_id invalid for product ${product.id}, re-uploading`);
+				// Continue to download and re-upload
+			}
+		}
+
+		// No file_id - download and upload the image
+		if (!product.image) {
+			await ctx.reply(caption, { parse_mode: 'HTML' });
+			return;
+		}
+
+		try {
+			const imageBuffer = await this.downloadImage(product.image);
+			if (!imageBuffer) {
+				await ctx.reply(caption, { parse_mode: 'HTML' });
+				return;
+			}
+
+			const sentMessage = await ctx.replyWithPhoto(
+				{ source: imageBuffer },
+				{ caption, parse_mode: 'HTML' }
+			);
+
+			// Save file_id to API in background (don't wait)
+			const photo = sentMessage.photo;
+			if (photo && photo.length > 0) {
+				const fileId = photo[photo.length - 1].file_id; // Largest size
+				this.saveImageFileId(product.id, fileId); // Fire and forget
+			}
+		} catch (error) {
+			this.logger.error('Failed to send product image', error);
+			await ctx.reply(caption, { parse_mode: 'HTML' });
+		}
+	}
+
+	// ==================== Image Methods ====================
+
+	async downloadImage(url: string): Promise<Buffer | null> {
+		try {
+			const { data } = await firstValueFrom(
+				this.httpService.get(url, { responseType: 'arraybuffer' })
+			);
+			return Buffer.from(data);
+		} catch (error) {
+			this.logger.error(`Failed to download image: ${url}`, error);
+			return null;
+		}
+	}
+
+	saveImageFileId(productId: number, fileId: string): void {
+		firstValueFrom(
+			this.httpService.patch(`/products/${productId}/image-file-id`, {
+				image_file_id: fileId,
+			})
+		)
+			.then(() => {
+				this.logger.debug(`Saved file_id for product ${productId}`);
+			})
+			.catch((error) => {
+				this.logger.error(`Failed to save file_id for product ${productId}`, error);
+			});
+	}
+
+	// ==================== Message Formatting ====================
+
+
+	formatProductMessage(product: { name: string; description: string }): string {
+		const escapedName = this.escapeHtml(product.name);
+		return `<b>${escapedName}</b>\n\n${product.description}`;
+	}
+
+	escapeHtml(text: string): string {
+		return text
+			.replace(/&/g, '&amp;')
+			.replace(/</g, '&lt;')
+			.replace(/>/g, '&gt;');
+	}
+
+	// ==================== Utility Methods ====================
+
+	getUserName(ctx: BotContext): string {
+		return ctx.from?.first_name || 'there';
+	}
+
+	getIdFromMatch(ctx: BotContext): number {
+		const match = (ctx as any).match;
+		return parseInt(match[1], 10);
+	}
+}

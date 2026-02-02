@@ -61,16 +61,8 @@ export class BotUpdate {
             return;
         }
 
-        const buttons = this.botService.buildCategoryContentButtons(category);
-
         await ctx.answerCbQuery();
-        await ctx.reply(
-            `📂 *${category.name}*\n\nSelect an item:`,
-            {
-                parse_mode: 'Markdown',
-                ...Markup.inlineKeyboard(buttons),
-            }
-        );
+        await this.botService.sendCategory(ctx, category);
     }
 
     @Action(/^product\/(\d+)$/)

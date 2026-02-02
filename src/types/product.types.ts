@@ -26,6 +26,17 @@ export interface Category {
     id: number;
     name: string;
     bot_identifier: string;
+    image: string | null;
+    image_file_id: string | null;
     child_categories: CategoryListItem[];
-    products: Product[];
+    products: CategoryProductItem[];
+}
+
+/**
+ * Product item in category listing (minimal data)
+ */
+export interface CategoryProductItem {
+    id: number;
+    name: string;
+    sort_order: number;
 }

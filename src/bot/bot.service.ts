@@ -4,7 +4,7 @@ import { firstValueFrom } from 'rxjs';
 import { Context, Markup } from 'telegraf';
 import { CategoryService } from '@/api/catalog/category.service';
 import { ProductService } from '@/api/catalog/product.service';
-import { Product, Category, CategoryListItem } from '@/types';
+import { Product, Category, CategoryListItem, CategoryProductItem } from '@/types';
 
 export type BotContext = Context;
 
@@ -47,6 +47,78 @@ export class BotService {
 				[Markup.button.callback(`📦 ${product.name}`, `product/${product.id}`)]
 			),
 		];
+	}
+
+	/**
+	 * Send category with optional image
+	 * - If image_file_id exists, use it directly (instant)
+	 * - If not but image URL exists, download, upload to Telegram, save file_id to API
+	 * - If no image at all, send text only with buttons
+	 */
+	async sendCategory(ctx: BotContext, category: Category): Promise<void> {
+		const buttons = this.buildCategoryContentButtons(category);
+		const caption = `📂 *${category.name}*\n\nSelect an item:`;
+
+		// No image - render as text with buttons
+		if (!category.image && !category.image_file_id) {
+			await ctx.reply(caption, {
+				parse_mode: 'Markdown',
+				...Markup.inlineKeyboard(buttons),
+			});
+			return;
+		}
+
+		// Has image_file_id - use it directly
+		if (category.image_file_id) {
+			this.logger.log(`Sending category ${category.id} with image_file_id ${category.image_file_id}`);
+			try {
+				await ctx.replyWithPhoto(category.image_file_id, {
+					caption,
+					parse_mode: 'Markdown',
+					...Markup.inlineKeyboard(buttons),
+				});
+				return;
+			} catch (error) {
+				this.logger.warn(`Stored file_id invalid for category ${category.id}, re-uploading`);
+				// Continue to download and re-upload
+			}
+		}
+
+		// Has image URL but no file_id - download, upload, save file_id
+		if (category.image) {
+			try {
+				const imageBuffer = await this.downloadImage(category.image);
+				if (!imageBuffer) {
+					await ctx.reply(caption, {
+						parse_mode: 'Markdown',
+						...Markup.inlineKeyboard(buttons),
+					});
+					return;
+				}
+
+				const sentMessage = await ctx.replyWithPhoto(
+					{ source: imageBuffer },
+					{
+						caption,
+						parse_mode: 'Markdown',
+						...Markup.inlineKeyboard(buttons),
+					}
+				);
+
+				// Save file_id to API in background (don't wait)
+				const photo = sentMessage.photo;
+				if (photo && photo.length > 0) {
+					const fileId = photo[photo.length - 1].file_id; // Largest size
+					this.saveCategoryImageFileId(category.id, fileId); // Fire and forget
+				}
+			} catch (error) {
+				this.logger.error('Failed to send category image', error);
+				await ctx.reply(caption, {
+					parse_mode: 'Markdown',
+					...Markup.inlineKeyboard(buttons),
+				});
+			}
+		}
 	}
 
 	// ==================== Product Methods ====================
@@ -143,6 +215,20 @@ export class BotService {
 			})
 			.catch((error) => {
 				this.logger.error(`Failed to save file_id for product ${productId}`, error);
+			});
+	}
+
+	saveCategoryImageFileId(categoryId: number, fileId: string): void {
+		firstValueFrom(
+			this.httpService.patch(`/categories/${categoryId}/image-file-id`, {
+				image_file_id: fileId,
+			})
+		)
+			.then(() => {
+				this.logger.debug(`Saved file_id for category ${categoryId}`);
+			})
+			.catch((error) => {
+				this.logger.error(`Failed to save file_id for category ${categoryId}`, error);
 			});
 	}
 

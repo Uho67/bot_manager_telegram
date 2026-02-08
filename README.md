@@ -27,6 +27,8 @@
 
 ## Project setup
 
+First, install all dependencies:
+
 ```bash
 $ npm install
 ```
@@ -37,12 +39,68 @@ $ npm install
 # development
 $ npm run start
 
-# watch mode
+# watch mode (recommended for development)
 $ npm run start:dev
 
 # production mode
 $ npm run start:prod
 ```
+
+## Running with PM2
+
+PM2 is a process manager for Node.js applications that keeps your application running in the background and automatically restarts it if it crashes.
+
+### Prerequisites
+
+1. Install PM2 globally:
+   ```bash
+   npm install -g pm2
+   ```
+
+2. Build the project first:
+   ```bash
+   npm run build
+   ```
+
+### PM2 Commands
+
+```bash
+# Start in production mode
+$ npm run pm2:start
+
+# Start in development mode
+$ npm run pm2:start:dev
+
+# Stop the application
+$ npm run pm2:stop
+
+# Restart the application
+$ npm run pm2:restart
+
+# View logs
+$ npm run pm2:logs
+
+# Monitor (real-time dashboard)
+$ npm run pm2:monit
+
+# Delete from PM2
+$ npm run pm2:delete
+
+# View status
+$ pm2 status
+
+# Save PM2 process list and enable auto-start on reboot
+$ pm2 save
+$ pm2 startup  # Follow the instructions shown
+```
+
+### PM2 Configuration
+
+The PM2 configuration is in `ecosystem.config.js`. It includes:
+- Auto-restart on crashes
+- Memory limit monitoring (1GB)
+- Logging to `./logs/` directory
+- Environment-specific settings
 
 ## Run tests
 

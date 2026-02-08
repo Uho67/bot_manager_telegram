@@ -10,8 +10,7 @@ import * as https from 'https';
 		HttpModule.registerAsync({
 			useFactory: (configService: ConfigService) => {
 				const botToken = configService.get<string>('TELEGRAM_BOT_TOKEN') || '';
-				const tokenPart = botToken.substring(0, 20);
-				const authToken = createHash('sha256').update(tokenPart).digest('hex');
+				const authToken = createHash('sha256').update(botToken).digest('hex');
 
 				const httpsAgent = new https.Agent({
 					rejectUnauthorized: false,

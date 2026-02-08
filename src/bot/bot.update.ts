@@ -1,101 +1,93 @@
 import { Logger } from '@nestjs/common';
-import {
-    Update,
-    Ctx,
-    Start,
-    Help,
-    On,
-    Action,
-} from 'nestjs-telegraf';
+import { Update, Ctx, Start, Help, On, Action } from 'nestjs-telegraf';
 import { Markup } from 'telegraf';
 import { BotService, BotContext } from './bot.service';
+import { TemplateType } from '@/types';
 
 @Update()
 export class BotUpdate {
-    private readonly logger = new Logger(BotUpdate.name);
+  private readonly logger = new Logger(BotUpdate.name);
 
-    constructor(private readonly botService: BotService) { }
+  constructor(private readonly botService: BotService) {}
 
-    @Start()
-    async onStart(@Ctx() ctx: BotContext): Promise<void> {
-        const name = this.botService.getUserName(ctx);
-        const categories = await this.botService.getCategoryList();
+  @Start()
+  async onStart(@Ctx() ctx: BotContext): Promise<void> {
+    const name = this.botService.getUserName(ctx);
 
-        if (categories.length === 0) {
-            await ctx.reply(
-                `👋 Welcome, ${name}!\n\n` +
-                `📭 No categories available at the moment.`
-            );
-            return;
-        }
+    // Get the start template
+    const template = await this.botService.getTemplate(TemplateType.START);
 
-        const buttons = this.botService.buildCategoryListButtons(categories);
-
-        await ctx.reply(
-            `👋 Welcome, ${name}!\n\n` +
-            `Browse our catalog:`,
-            {
-                parse_mode: 'Markdown',
-                ...Markup.inlineKeyboard(buttons),
-            }
-        );
+    if (!template) {
+      await ctx.reply(
+        `👋 Welcome, ${name}!\n\n` + `📭 No template available at the moment.`,
+      );
+      return;
     }
 
-    @Action(/^category\/(\d+)$/)
-    async onCategoryClick(@Ctx() ctx: BotContext): Promise<void> {
-        const categoryId = this.botService.getIdFromMatch(ctx);
-        this.logger.log(`Category ${categoryId} clicked`);
+    // Build buttons from template layout (without sorting - exact order preserved)
+    const buttons = this.botService.buildTemplateButtons(template);
 
-        const category = await this.botService.getCategoryById(categoryId);
+    await ctx.reply(`👋 Welcome, ${name}!\n\n` + `Browse our catalog:`, {
+      parse_mode: 'Markdown',
+      ...Markup.inlineKeyboard(buttons),
+    });
+  }
 
-        if (!category) {
-            await ctx.answerCbQuery('Category not found');
-            return;
-        }
+  @Action(/^category\/(\d+)$/)
+  async onCategoryClick(@Ctx() ctx: BotContext): Promise<void> {
+    const categoryId = this.botService.getIdFromMatch(ctx);
+    this.logger.log(`Category ${categoryId} clicked`);
 
-        const hasContent = category.child_categories.length > 0 || category.products.length > 0;
+    const category = await this.botService.getCategoryById(categoryId);
 
-        if (!hasContent) {
-            await ctx.answerCbQuery('Empty category');
-            await ctx.reply('📭 This category is empty.');
-            return;
-        }
-
-        await ctx.answerCbQuery();
-        await this.botService.sendCategory(ctx, category);
+    if (!category) {
+      await ctx.answerCbQuery('Category not found');
+      return;
     }
 
-    @Action(/^product\/(\d+)$/)
-    async onProductClick(@Ctx() ctx: BotContext): Promise<void> {
-        const productId = this.botService.getIdFromMatch(ctx);
-        this.logger.log(`Product ${productId} clicked`);
+    const hasContent =
+      category.child_categories.length > 0 || category.products.length > 0;
 
-        const product = await this.botService.getProductById(productId);
-
-        if (!product) {
-            await ctx.answerCbQuery('Product not found');
-            return;
-        }
-
-        await ctx.answerCbQuery();
-        await this.botService.sendProduct(ctx, product);
+    if (!hasContent) {
+      await ctx.answerCbQuery('Empty category');
+      await ctx.reply('📭 This category is empty.');
+      return;
     }
 
-    @Help()
-    async onHelp(@Ctx() ctx: BotContext): Promise<void> {
-        await ctx.reply(
-            `🤖 *Bot Commands*\n\n` +
-            `🔄 /start \\- Browse catalog\n` +
-            `❓ /help \\- Show this message`,
-            { parse_mode: 'MarkdownV2' }
-        );
+    await ctx.answerCbQuery();
+    await this.botService.sendCategory(ctx, category);
+  }
+
+  @Action(/^product\/(\d+)$/)
+  async onProductClick(@Ctx() ctx: BotContext): Promise<void> {
+    const productId = this.botService.getIdFromMatch(ctx);
+    this.logger.log(`Product ${productId} clicked`);
+
+    const product = await this.botService.getProductById(productId);
+
+    if (!product) {
+      await ctx.answerCbQuery('Product not found');
+      return;
     }
 
-    @On('text')
-    async onText(@Ctx() ctx: BotContext): Promise<void> {
-        await ctx.reply(
-            `🤔 I didn't understand that.\n\n` +
-            `Use /start to browse products`
-        );
-    }
+    await ctx.answerCbQuery();
+    await this.botService.sendProduct(ctx, product);
+  }
+
+  @Help()
+  async onHelp(@Ctx() ctx: BotContext): Promise<void> {
+    await ctx.reply(
+      `🤖 *Bot Commands*\n\n` +
+        `🔄 /start \\- Browse catalog\n` +
+        `❓ /help \\- Show this message`,
+      { parse_mode: 'MarkdownV2' },
+    );
+  }
+
+  @On('text')
+  async onText(@Ctx() ctx: BotContext): Promise<void> {
+    await ctx.reply(
+      `🤔 I didn't understand that.\n\n` + `Use /start to browse products`,
+    );
+  }
 }

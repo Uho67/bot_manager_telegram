@@ -1,4 +1,13 @@
 /**
+ * Button in a category layout
+ */
+export interface CategoryButton {
+  label: string;
+  button_type: 'callback' | 'url' | 'web_app';
+  value: string;
+}
+
+/**
  * Product data structure from external API
  */
 export interface Product {
@@ -25,11 +34,13 @@ export interface CategoryListItem {
 export interface Category {
     id: number;
     name: string;
-    bot_identifier: string;
+    is_root: boolean;
     image: string | null;
     image_file_id: string | null;
-    child_categories: CategoryListItem[];
-    products: CategoryProductItem[];
+    layout: CategoryButton[][];
+    // Legacy fields (kept for backward compatibility, but layout takes precedence)
+    child_categories?: CategoryListItem[];
+    products?: CategoryProductItem[];
 }
 
 /**

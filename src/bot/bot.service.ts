@@ -24,7 +24,7 @@ export class BotService {
     private readonly productService: ProductService,
     private readonly templateService: TemplateService,
     private readonly httpService: HttpService,
-  ) {}
+  ) { }
 
   // ==================== Category Methods ====================
 
@@ -43,11 +43,45 @@ export class BotService {
     ]);
   }
 
+  /**
+   * Build inline keyboard buttons from category layout
+   * Returns buttons in the exact order as defined in the category layout from API
+   * No sorting is applied - preserves API order
+   */
   buildCategoryContentButtons(category: Category) {
-    const sortedCategories = [...category.child_categories].sort(
+    // Use layout if available (new API format)
+    if (category.layout && category.layout.length > 0) {
+      const buttons = category.layout.map((line, lineIndex) => {
+        const lineButtons = line.map((button) => {
+          // Create button based on button_type
+          switch (button.button_type) {
+            case 'callback':
+              return Markup.button.callback(button.label, button.value);
+            case 'url':
+              return Markup.button.url(button.label, button.value);
+            case 'web_app':
+              return Markup.button.webApp(button.label, button.value);
+            default:
+              // Default to callback if unknown type
+              return Markup.button.callback(button.label, button.value);
+          }
+        });
+        this.logger.debug(
+          `Category ${category.id}, line ${lineIndex + 1}: ${lineButtons.length} button(s)`,
+        );
+        return lineButtons;
+      });
+      this.logger.debug(
+        `Built ${buttons.length} lines with total buttons for category ${category.id}`,
+      );
+      return buttons;
+    }
+
+    // Fallback to legacy format (for backward compatibility)
+    const sortedCategories = [...(category.child_categories || [])].sort(
       (a, b) => a.sort_order - b.sort_order,
     );
-    const sortedProducts = [...category.products].sort(
+    const sortedProducts = [...(category.products || [])].sort(
       (a, b) => a.sort_order - b.sort_order,
     );
 
@@ -115,9 +149,6 @@ export class BotService {
 
     // Has image_file_id - use it directly
     if (category.image_file_id) {
-      this.logger.log(
-        `Sending category ${category.id} with image_file_id ${category.image_file_id}`,
-      );
       try {
         await ctx.replyWithPhoto(category.image_file_id, {
           caption,
@@ -176,31 +207,37 @@ export class BotService {
     return this.productService.getProductById(productId);
   }
 
-  async sendProduct(ctx: BotContext, product: Product): Promise<void> {
-    const message = this.formatProductMessage(product);
-
-    if (product.image) {
-      await this.sendProductWithImage(ctx, product, message);
-    } else {
-      await ctx.reply(message, { parse_mode: 'HTML' });
-    }
-  }
-
   /**
-   * Send product with image
-   * - If image_file_id exists, use it directly (instant)
-   * - If not, download image, upload to Telegram, and save file_id to API
+   * Send product with optional image and template buttons
+   * - Gets product template from API/cache
+   * - Builds buttons from template layout
+   * - Renders product image, name, description, and buttons
    */
-  private async sendProductWithImage(
-    ctx: BotContext,
-    product: Product,
-    caption: string,
-  ): Promise<void> {
+  async sendProduct(ctx: BotContext, product: Product): Promise<void> {
+    // Get the product template
+    const template = await this.getTemplate(TemplateType.PRODUCT);
+
+    // Build buttons from template layout if available
+    const buttons = template ? this.buildTemplateButtons(template) : [];
+
+    const caption = this.formatProductMessage(product);
+
+    // No image - render as text with buttons
+    if (!product.image && !product.image_file_id) {
+      await ctx.reply(caption, {
+        parse_mode: 'HTML',
+        ...(buttons.length > 0 ? Markup.inlineKeyboard(buttons) : {}),
+      });
+      return;
+    }
+
+    // Has image_file_id - use it directly
     if (product.image_file_id) {
       try {
         await ctx.replyWithPhoto(product.image_file_id, {
           caption,
           parse_mode: 'HTML',
+          ...(buttons.length > 0 ? Markup.inlineKeyboard(buttons) : {}),
         });
         return;
       } catch (error) {
@@ -211,33 +248,40 @@ export class BotService {
       }
     }
 
-    // No file_id - download and upload the image
-    if (!product.image) {
-      await ctx.reply(caption, { parse_mode: 'HTML' });
-      return;
-    }
+    // Has image URL but no file_id - download, upload, save file_id
+    if (product.image) {
+      try {
+        const imageBuffer = await this.downloadImage(product.image);
+        if (!imageBuffer) {
+          await ctx.reply(caption, {
+            parse_mode: 'HTML',
+            ...(buttons.length > 0 ? Markup.inlineKeyboard(buttons) : {}),
+          });
+          return;
+        }
 
-    try {
-      const imageBuffer = await this.downloadImage(product.image);
-      if (!imageBuffer) {
-        await ctx.reply(caption, { parse_mode: 'HTML' });
-        return;
+        const sentMessage = await ctx.replyWithPhoto(
+          { source: imageBuffer },
+          {
+            caption,
+            parse_mode: 'HTML',
+            ...(buttons.length > 0 ? Markup.inlineKeyboard(buttons) : {}),
+          },
+        );
+
+        // Save file_id to API in background (don't wait)
+        const photo = sentMessage.photo;
+        if (photo && photo.length > 0) {
+          const fileId = photo[photo.length - 1].file_id; // Largest size
+          this.saveImageFileId(product.id, fileId); // Fire and forget
+        }
+      } catch (error) {
+        this.logger.error('Failed to send product image', error);
+        await ctx.reply(caption, {
+          parse_mode: 'HTML',
+          ...(buttons.length > 0 ? Markup.inlineKeyboard(buttons) : {}),
+        });
       }
-
-      const sentMessage = await ctx.replyWithPhoto(
-        { source: imageBuffer },
-        { caption, parse_mode: 'HTML' },
-      );
-
-      // Save file_id to API in background (don't wait)
-      const photo = sentMessage.photo;
-      if (photo && photo.length > 0) {
-        const fileId = photo[photo.length - 1].file_id; // Largest size
-        this.saveImageFileId(product.id, fileId); // Fire and forget
-      }
-    } catch (error) {
-      this.logger.error('Failed to send product image', error);
-      await ctx.reply(caption, { parse_mode: 'HTML' });
     }
   }
 

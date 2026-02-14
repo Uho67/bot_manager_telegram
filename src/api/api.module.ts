@@ -3,13 +3,15 @@ import { HttpModule, HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { createHash } from 'crypto';
 import * as https from 'https';
+import { HTTP_CONFIG } from '@/common/constants';
 
 @Global()
 @Module({
 	imports: [
 		HttpModule.registerAsync({
 			useFactory: (configService: ConfigService) => {
-				const botToken = configService.get<string>('TELEGRAM_BOT_TOKEN') || '';
+				const botToken =
+					configService.get<string>('TELEGRAM_BOT_TOKEN') || '';
 				const authToken = createHash('sha256').update(botToken).digest('hex');
 
 				const httpsAgent = new https.Agent({
@@ -18,7 +20,7 @@ import * as https from 'https';
 
 				return {
 					baseURL: configService.get<string>('API_BASE_URL'),
-					timeout: 15000,
+					timeout: HTTP_CONFIG.DEFAULT_TIMEOUT,
 					headers: {
 						Authorization: `Bearer ${authToken}`,
 					},
@@ -37,26 +39,41 @@ export class ApiModule implements OnModuleInit {
 
 	onModuleInit() {
 		const axios = this.httpService.axiosRef;
+		const enableHttpDebug =
+			process.env.ENABLE_HTTP_DEBUG === 'true' ||
+			process.env.NODE_ENV === 'development';
+		const enableXdebug = process.env.ENABLE_XDEBUG === 'true';
 
 		// Request interceptor
 		axios.interceptors.request.use(
 			(config) => {
-				// Add Xdebug session for PHP debugging in PhpStorm
-				config.params = {
-					...config.params,
-					XDEBUG_SESSION_START: 'PHPSTORM',
-				};
+				// Add Xdebug session for PHP debugging in PhpStorm (if enabled)
+				if (enableXdebug) {
+					config.params = {
+						...config.params,
+						XDEBUG_SESSION_START:
+							process.env.XDEBUG_SESSION || HTTP_CONFIG.XDEBUG_SESSION,
+					};
+				}
 
-				this.logger.debug('═══════════════════════════════════════');
-				this.logger.debug(`➡️  REQUEST: ${config.method?.toUpperCase()} ${config.baseURL}${config.url}`);
-				this.logger.debug(`Headers: ${JSON.stringify(config.headers, null, 2)}`);
-				if (config.params) {
-					this.logger.debug(`Params: ${JSON.stringify(config.params, null, 2)}`);
+				if (enableHttpDebug) {
+					this.logger.debug('═══════════════════════════════════════');
+					this.logger.debug(
+						`➡️  REQUEST: ${config.method?.toUpperCase()} ${config.baseURL}${config.url}`,
+					);
+					this.logger.debug(
+						`Headers: ${JSON.stringify(config.headers, null, 2)}`,
+					);
+					if (config.params) {
+						this.logger.debug(
+							`Params: ${JSON.stringify(config.params, null, 2)}`,
+						);
+					}
+					if (config.data) {
+						this.logger.debug(`Body: ${JSON.stringify(config.data, null, 2)}`);
+					}
+					this.logger.debug('═══════════════════════════════════════');
 				}
-				if (config.data) {
-					this.logger.debug(`Body: ${JSON.stringify(config.data, null, 2)}`);
-				}
-				this.logger.debug('═══════════════════════════════════════');
 				return config;
 			},
 			(error) => {
@@ -68,11 +85,17 @@ export class ApiModule implements OnModuleInit {
 		// Response interceptor
 		axios.interceptors.response.use(
 			(response) => {
-				this.logger.debug('───────────────────────────────────────');
-				this.logger.debug(`✅ RESPONSE: ${response.status} ${response.statusText}`);
-				this.logger.debug(`URL: ${response.config.url}`);
-				this.logger.debug(`Data: ${JSON.stringify(response.data, null, 2)}`);
-				this.logger.debug('───────────────────────────────────────');
+				if (enableHttpDebug) {
+					this.logger.debug('───────────────────────────────────────');
+					this.logger.debug(
+						`✅ RESPONSE: ${response.status} ${response.statusText}`,
+					);
+					this.logger.debug(`URL: ${response.config.url}`);
+					this.logger.debug(
+						`Data: ${JSON.stringify(response.data, null, 2)}`,
+					);
+					this.logger.debug('───────────────────────────────────────');
+				}
 				return response;
 			},
 			(error) => {
@@ -80,16 +103,22 @@ export class ApiModule implements OnModuleInit {
 				this.logger.error(`❌ RESPONSE ERROR: ${error.message}`);
 				if (error.response) {
 					this.logger.error(`Status: ${error.response.status}`);
-					this.logger.error(`Data: ${JSON.stringify(error.response.data, null, 2)}`);
+					this.logger.error(
+						`Data: ${JSON.stringify(error.response.data, null, 2)}`,
+					);
 				}
 				if (error.config) {
-					this.logger.error(`URL: ${error.config.baseURL}${error.config.url}`);
+					this.logger.error(
+						`URL: ${error.config.baseURL}${error.config.url}`,
+					);
 				}
 				this.logger.error('───────────────────────────────────────');
 				return Promise.reject(error);
 			},
 		);
 
-		this.logger.log('Axios HTTP interceptors initialized');
+		this.logger.log(
+			`Axios HTTP interceptors initialized (Debug: ${enableHttpDebug}, XDebug: ${enableXdebug})`,
+		);
 	}
 }

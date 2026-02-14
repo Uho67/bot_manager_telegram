@@ -3,9 +3,13 @@ import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 import { CacheService } from '@/cache/cache.service';
 import { Template, TemplateType } from '@/types';
+import { CACHE_PREFIXES, API_ENDPOINTS } from '@/common/constants';
 
-const TEMPLATE_CACHE_PREFIX = 'template:';
-
+/**
+ * Service for managing template data
+ * Handles fetching, caching, and retrieving template configurations from external API
+ * Templates define button layouts for different bot screens
+ */
 @Injectable()
 export class TemplateService {
   private readonly logger = new Logger(TemplateService.name);
@@ -13,7 +17,7 @@ export class TemplateService {
   constructor(
     private readonly httpService: HttpService,
     private readonly cacheService: CacheService,
-  ) {}
+  ) { }
 
   /**
    * Get template by type
@@ -23,7 +27,7 @@ export class TemplateService {
   async getTemplateByType(
     type: TemplateType | string,
   ): Promise<Template | null> {
-    const cacheKey = `${TEMPLATE_CACHE_PREFIX}${type}`;
+    const cacheKey = `${CACHE_PREFIXES.TEMPLATE}${type}`;
 
     // Check cache first
     const cached = this.cacheService.get<Template>(cacheKey);
@@ -37,7 +41,7 @@ export class TemplateService {
       this.logger.log(`Fetching template '${type}' from API`);
       const { data } = await firstValueFrom(
         this.httpService.get<Template[]>(
-          `../../telegram/template/by-type/${type}`,
+          API_ENDPOINTS.TEMPLATE_BY_TYPE(type),
         ),
       );
 
@@ -62,7 +66,7 @@ export class TemplateService {
    * Clear template cache for a specific type
    */
   clearTemplateCache(type: TemplateType | string): void {
-    const cacheKey = `${TEMPLATE_CACHE_PREFIX}${type}`;
+    const cacheKey = `${CACHE_PREFIXES.TEMPLATE}${type}`;
     this.cacheService.delete(cacheKey);
     this.logger.log(`Template cache cleared for type '${type}'`);
   }
@@ -71,7 +75,7 @@ export class TemplateService {
    * Clear all template caches
    */
   clearAllTemplateCache(): void {
-    const keys = this.cacheService.keys(TEMPLATE_CACHE_PREFIX);
+    const keys = this.cacheService.keys(CACHE_PREFIXES.TEMPLATE);
     keys.forEach((key) => this.cacheService.delete(key));
     this.logger.log(`Cleared ${keys.length} template cache entries`);
   }

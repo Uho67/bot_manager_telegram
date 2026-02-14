@@ -9,8 +9,6 @@ import {
   CategoryListItem,
   Template,
   TemplateType,
-  ButtonRow,
-  MatchContext,
 } from '@/types';
 import { BOT_MESSAGES } from '@/common/constants';
 import {
@@ -36,7 +34,7 @@ export class BotService {
     private readonly imageHandler: ImageHandlerService,
     private readonly messageFormatter: MessageFormatterService,
     private readonly buttonBuilder: ButtonBuilderService,
-  ) { }
+  ) {}
 
   // ==================== Category Methods ====================
 
@@ -73,16 +71,9 @@ export class BotService {
    * - If image_file_id exists, use it directly (instant)
    * - If not but image URL exists, download, upload to Telegram, save file_id to API
    * - If no image at all, send text only with buttons
-   * - Always includes back button at the bottom
    */
-  async sendCategory(
-    ctx: BotContext,
-    category: Category,
-    parentCategoryId?: number,
-  ): Promise<void> {
-    let buttons = this.buildCategoryContentButtons(category);
-    // Add back button (to parent category if provided, otherwise to start)
-    buttons = this.buttonBuilder.addBackButton(buttons, parentCategoryId);
+  async sendCategory(ctx: BotContext, category: Category): Promise<void> {
+    const buttons = this.buildCategoryContentButtons(category);
     const caption = BOT_MESSAGES.CATEGORY_LABEL(category.name);
 
     // No image - render as text with buttons
@@ -124,7 +115,7 @@ export class BotService {
     ctx: BotContext,
     category: Category,
     caption: string,
-    buttons: ButtonRow,
+    buttons: any[][],
   ): Promise<void> {
     try {
       const imageBuffer = await this.imageHandler.downloadImage(
@@ -179,16 +170,6 @@ export class BotService {
     return this.buttonBuilder.buildTemplateButtons(template);
   }
 
-  /**
-   * Add back button to button rows
-   * @param buttons - Existing button rows
-   * @param categoryId - Optional category ID for back navigation
-   * @returns Button rows with back button appended
-   */
-  addBackButton(buttons: ButtonRow, categoryId?: number): ButtonRow {
-    return this.buttonBuilder.addBackButton(buttons, categoryId);
-  }
-
   // ==================== Product Methods ====================
 
   /**
@@ -203,21 +184,13 @@ export class BotService {
    * - Gets product template from API/cache
    * - Builds buttons from template layout
    * - Renders product image, name, description, and buttons
-   * - Always includes back button at the bottom
-   * @param categoryId - Optional category ID to navigate back to
    */
-  async sendProduct(
-    ctx: BotContext,
-    product: Product,
-    categoryId?: number,
-  ): Promise<void> {
+  async sendProduct(ctx: BotContext, product: Product): Promise<void> {
     // Get the product template
     const template = await this.getTemplate(TemplateType.PRODUCT);
 
     // Build buttons from template layout if available
-    let buttons = template ? this.buildTemplateButtons(template) : [];
-    // Add back button (to category if provided, otherwise to start)
-    buttons = this.buttonBuilder.addBackButton(buttons, categoryId);
+    const buttons = template ? this.buildTemplateButtons(template) : [];
 
     const caption = this.messageFormatter.formatProductMessage(product);
 
@@ -260,7 +233,7 @@ export class BotService {
     ctx: BotContext,
     product: Product,
     caption: string,
-    buttons: ButtonRow,
+    buttons: any[][],
   ): Promise<void> {
     try {
       const imageBuffer = await this.imageHandler.downloadImage(product.image!);
@@ -309,7 +282,8 @@ export class BotService {
   /**
    * Extract ID from callback query match
    */
-  getIdFromMatch(ctx: MatchContext): number {
-    return parseInt(ctx.match[1], 10);
+  getIdFromMatch(ctx: BotContext): number {
+    const match = (ctx as any).match;
+    return parseInt(match[1], 10);
   }
 }

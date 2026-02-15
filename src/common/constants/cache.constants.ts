@@ -2,7 +2,7 @@
  * Cache key prefixes and constants
  */
 export const CACHE_PREFIXES = {
-  TEMPLATE: 'template:',
+  POST: 'post:',
   PRODUCT: 'product:',
   CATEGORY: 'category:',
   CATEGORY_LIST: 'category:list',

@@ -35,15 +35,6 @@ export class UsersService {
   }
 
   /**
-   * Find user by id
-   * @param id - User database ID
-   * @returns User entity or null if not found
-   */
-  findById(id: number): Promise<User | null> {
-    return this.userRepo.findOne({ where: { id } });
-  }
-
-  /**
    * Get all users
    */
   findAll(): Promise<User[]> {
@@ -80,15 +71,20 @@ export class UsersService {
    * @param status - New user status
    * @returns Updated user entity or null if not found
    */
-  async updateStatus(
-    chatId: number,
-    status: UserStatus,
-  ): Promise<User | null> {
+  async updateStatus(chatId: number, status: UserStatus): Promise<User | null> {
     const user = await this.findByChatId(chatId);
     if (!user) {
       return null;
     }
     user.status = status;
     return this.userRepo.save(user);
+  }
+
+  /**
+   * Delete all users from the database
+   * @returns Number of deleted users
+   */
+  async deleteAll(): Promise<void> {
+    await this.userRepo.clear();
   }
 }

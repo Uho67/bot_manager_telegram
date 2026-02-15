@@ -1,6 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
+import axios from 'axios';
+import * as https from 'https';
 import { API_ENDPOINTS } from '@/common/constants';
 import { TelegramPhotoSize } from '@/types';
 
@@ -14,7 +16,7 @@ import { TelegramPhotoSize } from '@/types';
 export class ImageHandlerService {
   private readonly logger = new Logger(ImageHandlerService.name);
 
-  constructor(private readonly httpService: HttpService) {}
+  constructor(private readonly httpService: HttpService) { }
 
   /**
    * Download image from URL and return as Buffer
@@ -23,9 +25,20 @@ export class ImageHandlerService {
    */
   async downloadImage(url: string): Promise<Buffer | null> {
     try {
-      const { data } = await firstValueFrom(
-        this.httpService.get(url, { responseType: 'arraybuffer' }),
-      );
+      // Use a separate axios instance without baseURL for external image URLs
+      // This prevents the configured baseURL from being prepended to absolute URLs
+      // Configure HTTPS agent to accept self-signed/expired certificates (same as ApiModule)
+      const httpsAgent = new https.Agent({
+        rejectUnauthorized: false,
+      });
+
+      const externalAxios = axios.create({
+        responseType: 'arraybuffer',
+        timeout: 15000,
+        httpsAgent,
+      });
+
+      const { data } = await externalAxios.get(url);
       return Buffer.from(data);
     } catch (error) {
       this.logger.error(`Failed to download image: ${url}`, error);
@@ -77,6 +90,25 @@ export class ImageHandlerService {
           `Failed to save file_id for category ${categoryId}`,
           error,
         );
+      });
+  }
+
+  /**
+   * Save post image file ID to API (fire and forget)
+   * @param postId - Post ID
+   * @param fileId - Telegram file ID
+   */
+  savePostImageFileId(postId: number, fileId: string): void {
+    firstValueFrom(
+      this.httpService.patch(API_ENDPOINTS.POST_IMAGE_FILE_ID(postId), {
+        image_file_id: fileId,
+      }),
+    )
+      .then(() => {
+        this.logger.debug(`Saved file_id for post ${postId}`);
+      })
+      .catch((error) => {
+        this.logger.error(`Failed to save file_id for post ${postId}`, error);
       });
   }
 

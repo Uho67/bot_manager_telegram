@@ -19,6 +19,19 @@ export class MessageFormatterService {
   }
 
   /**
+   * Format post message with name and description
+   * @param post - Post with name and description
+   * @returns Formatted HTML message
+   */
+  formatPostMessage(post: {
+    name: string;
+    description: string;
+  }): string {
+    const escapedName = this.escapeHtml(post.name);
+    return `<b>${escapedName}</b>\n\n${post.description}`;
+  }
+
+  /**
    * Escape HTML special characters
    * @param text - Text to escape
    * @returns Escaped text

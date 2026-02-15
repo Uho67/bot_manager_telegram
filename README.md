@@ -102,6 +102,102 @@ The PM2 configuration is in `ecosystem.config.js`. It includes:
 - Logging to `./logs/` directory
 - Environment-specific settings
 
+## Cache Management API
+
+The application provides REST API endpoints for managing the in-memory cache service (`CacheService`). This cache stores:
+- Posts (e.g., `post:start`)
+- Categories (e.g., `category:1`, `category:list`)
+- Products (e.g., `product:10`)
+
+All endpoints are protected by Bearer token authentication and allow you to clear the entire cache or view cache statistics.
+
+### Authentication
+
+All cache endpoints require Bearer token authentication. The token must be the SHA256 hash of the `TELEGRAM_BOT_TOKEN` environment variable.
+
+**Token Generation:**
+```javascript
+const crypto = require('crypto');
+const botToken = process.env.TELEGRAM_BOT_TOKEN;
+const authToken = crypto.createHash('sha256').update(botToken).digest('hex');
+```
+
+**Request Header:**
+```
+Authorization: Bearer <sha256_hash_of_bot_token>
+```
+
+### Endpoints
+
+#### Clear All Cache
+
+**Endpoint:** `DELETE /cache`
+
+Clears **all entries** from the in-memory cache service. This removes all cached posts, categories, and products. The cache will be repopulated as data is requested from the external API.
+
+**Example Request:**
+```bash
+curl -X DELETE http://localhost:3000/cache \
+  -H "Authorization: Bearer <your_sha256_hash_token>"
+```
+
+**Example Response:**
+```json
+{
+  "message": "Cache cleared successfully",
+  "cleared": 15
+}
+```
+
+#### Get Cache Statistics
+
+**Endpoint:** `GET /cache/stats`
+
+Returns cache statistics including the total number of entries and a list of all cache keys currently stored in the in-memory cache.
+
+**Example Request:**
+```bash
+curl -X GET http://localhost:3000/cache/stats \
+  -H "Authorization: Bearer <your_sha256_hash_token>"
+```
+
+**Example Response:**
+```json
+{
+  "totalEntries": 15,
+  "keys": [
+    "post:start",
+    "category:1",
+    "category:2",
+    "product:10",
+    "product:11"
+  ]
+}
+```
+
+### Error Responses
+
+**401 Unauthorized** - Missing or invalid Bearer token:
+```json
+{
+  "statusCode": 401,
+  "message": "Missing Authorization header"
+}
+```
+
+### Quick Test
+
+1. Generate the auth token:
+   ```bash
+   node -e "const crypto = require('crypto'); console.log(crypto.createHash('sha256').update(process.env.TELEGRAM_BOT_TOKEN || '').digest('hex'));"
+   ```
+
+2. Test the endpoint:
+   ```bash
+   curl -X DELETE http://localhost:3000/cache \
+     -H "Authorization: Bearer <generated_token>"
+   ```
+
 ## Run tests
 
 ```bash

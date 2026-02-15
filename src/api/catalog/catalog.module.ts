@@ -1,10 +1,10 @@
 import { Module } from '@nestjs/common';
 import { CategoryService } from './category.service';
 import { ProductService } from './product.service';
-import { TemplateService } from './template.service';
+import { PostService } from './post.service';
 
 @Module({
-  providers: [CategoryService, ProductService, TemplateService],
-  exports: [CategoryService, ProductService, TemplateService],
+  providers: [CategoryService, ProductService, PostService],
+  exports: [CategoryService, ProductService, PostService],
 })
-export class CatalogModule {}
+export class CatalogModule { }

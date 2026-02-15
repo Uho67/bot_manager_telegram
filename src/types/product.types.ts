@@ -2,10 +2,12 @@
  * Button in a category layout
  */
 export interface CategoryButton {
-  label: string;
-  button_type: 'callback' | 'url' | 'web_app';
-  value: string;
+    label: string;
+    button_type: 'callback' | 'url' | 'web_app';
+    value: string;
 }
+
+import { Template } from './template.types';
 
 /**
  * Product data structure from external API
@@ -17,6 +19,7 @@ export interface Product {
     image: string | null;
     image_file_id: string | null;
     sort_order: number;
+    template?: Template;
 }
 
 /**

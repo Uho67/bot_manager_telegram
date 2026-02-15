@@ -6,6 +6,7 @@ import { DatabaseModule } from './database/database.module';
 import { CacheModule } from './cache/cache.module';
 import { ApiModule } from './api/api.module';
 import { BotModule } from './bot/bot.module';
+import { CronModule } from './cron/cron.module';
 
 @Module({
   imports: [
@@ -22,8 +23,10 @@ import { BotModule } from './bot/bot.module';
     ApiModule,
     // Telegram bot
     BotModule,
+    // Cron jobs
+    CronModule,
   ],
   controllers: [AppController],
   providers: [AppService],
 })
-export class AppModule {}
+export class AppModule { }

@@ -31,5 +31,6 @@ import {
     MessageFormatterService,
     ButtonBuilderService,
   ],
+  exports: [ImageHandlerService, ButtonBuilderService, MessageFormatterService],
 })
-export class BotModule {}
+export class BotModule { }

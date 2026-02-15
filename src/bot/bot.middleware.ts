@@ -19,6 +19,13 @@ export class UserMiddleware {
    */
   middleware() {
     return async (ctx: Context, next: () => Promise<void>) => {
+      // Skip status updates for my_chat_member updates - handled by dedicated handler
+      const update = ctx.update as any;
+      if (update.my_chat_member) {
+        await next();
+        return;
+      }
+
       const from = ctx.from;
       const chatId = ctx.chat?.id;
 

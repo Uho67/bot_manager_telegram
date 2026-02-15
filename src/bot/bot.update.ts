@@ -1,9 +1,10 @@
 import { Logger } from '@nestjs/common';
-import { Update, Ctx, Start, Help, On, Action } from 'nestjs-telegraf';
+import { Update, Ctx, Start, Help, On, Action, Hears } from 'nestjs-telegraf';
 import { Markup } from 'telegraf';
 import { BotService, BotContext } from './bot.service';
-import { TemplateType } from '@/types';
 import { BOT_MESSAGES } from '@/common/constants';
+import { UsersService } from '@/api/users/users.service';
+import { UserStatus } from '@/database/entities/user.entity';
 
 /**
  * Telegram bot update handler
@@ -13,33 +14,33 @@ import { BOT_MESSAGES } from '@/common/constants';
 export class BotUpdate {
   private readonly logger = new Logger(BotUpdate.name);
 
-  constructor(private readonly botService: BotService) { }
+  constructor(
+    private readonly botService: BotService,
+    private readonly usersService: UsersService,
+  ) { }
 
   /**
    * Handle /start command
-   * Displays welcome message with catalog navigation buttons
+   * Displays welcome post with catalog navigation buttons
    */
   @Start()
   async onStart(@Ctx() ctx: BotContext): Promise<void> {
-    const name = this.botService.getUserName(ctx);
+    // Get the start post
+    const post = await this.botService.getPostByType('start');
 
-    // Get the start template
-    const template = await this.botService.getTemplate(TemplateType.START);
-
-    if (!template) {
+    if (!post) {
+      const name = this.botService.getUserName(ctx);
       await ctx.reply(
         `${BOT_MESSAGES.WELCOME(name)}\n\n${BOT_MESSAGES.TEMPLATE_UNAVAILABLE}`,
+        Markup.inlineKeyboard([
+          [Markup.button.callback('🔄 Переглянути каталог', 'start')],
+        ]),
       );
       return;
     }
 
-    // Build buttons from template layout (without sorting - exact order preserved)
-    const buttons = this.botService.buildTemplateButtons(template);
-
-    await ctx.reply(BOT_MESSAGES.WELCOME(name), {
-      parse_mode: 'Markdown',
-      ...Markup.inlineKeyboard(buttons),
-    });
+    // Send post with image and buttons
+    await this.botService.sendPost(ctx, post);
   }
 
   /**
@@ -60,7 +61,12 @@ export class BotUpdate {
     const category = await this.botService.getCategoryById(categoryId);
 
     if (!category) {
-      await ctx.reply(BOT_MESSAGES.CATEGORY_NOT_FOUND);
+      await ctx.reply(
+        BOT_MESSAGES.CATEGORY_NOT_FOUND,
+        Markup.inlineKeyboard([
+          [Markup.button.callback('🔄 Переглянути каталог', 'start')],
+        ]),
+      );
       return;
     }
 
@@ -71,7 +77,12 @@ export class BotUpdate {
       (category.products && category.products.length > 0);
 
     if (!hasContent) {
-      await ctx.reply(BOT_MESSAGES.CATEGORY_EMPTY);
+      await ctx.reply(
+        BOT_MESSAGES.CATEGORY_EMPTY,
+        Markup.inlineKeyboard([
+          [Markup.button.callback('🔄 Переглянути каталог', 'start')],
+        ]),
+      );
       return;
     }
 
@@ -100,7 +111,12 @@ export class BotUpdate {
     const product = await this.botService.getProductById(productId);
 
     if (!product) {
-      await ctx.reply(BOT_MESSAGES.PRODUCT_NOT_FOUND);
+      await ctx.reply(
+        BOT_MESSAGES.PRODUCT_NOT_FOUND,
+        Markup.inlineKeyboard([
+          [Markup.button.callback('🔄 Переглянути каталог', 'start')],
+        ]),
+      );
       return;
     }
 
@@ -110,8 +126,9 @@ export class BotUpdate {
   /**
    * Handle "start" callback button clicks
    * Returns user to main menu
+   * Handles both 'start' and '/start' button values
    */
-  @Action('start')
+  @Action(/^(start|\/start)$/)
   async onStartButtonClick(@Ctx() ctx: BotContext): Promise<void> {
     // Answer callback query immediately to prevent timeout
     await ctx.answerCbQuery().catch((err) => {
@@ -145,7 +162,12 @@ export class BotUpdate {
       const category = await this.botService.getCategoryById(categoryId);
 
       if (!category) {
-        await ctx.reply(BOT_MESSAGES.CATEGORY_NOT_FOUND);
+        await ctx.reply(
+          BOT_MESSAGES.CATEGORY_NOT_FOUND,
+          Markup.inlineKeyboard([
+            [Markup.button.callback('🔄 Переглянути каталог', 'start')],
+          ]),
+        );
         return;
       }
 
@@ -156,7 +178,12 @@ export class BotUpdate {
         (category.products && category.products.length > 0);
 
       if (!hasContent) {
-        await ctx.reply(BOT_MESSAGES.CATEGORY_EMPTY);
+        await ctx.reply(
+          BOT_MESSAGES.CATEGORY_EMPTY,
+          Markup.inlineKeyboard([
+            [Markup.button.callback('🔄 Переглянути каталог', 'start')],
+          ]),
+        );
         return;
       }
 
@@ -165,6 +192,81 @@ export class BotUpdate {
       // Navigate back to start (or refresh if already on start)
       this.logger.log('Back to start');
       await this.onStart(ctx);
+    }
+  }
+
+  /**
+   * Handle /stop command
+   * Sets user status to inactive
+   */
+  @Hears(/^\/stop$/)
+  async onStop(@Ctx() ctx: BotContext): Promise<void> {
+    const chatId = ctx.chat?.id;
+
+    if (!chatId) {
+      this.logger.warn('Stop command received but chat ID is missing');
+      return;
+    }
+
+    try {
+      await this.usersService.updateStatus(chatId, UserStatus.INACTIVE);
+      this.logger.log(`User ${chatId} set to inactive status`);
+      await ctx.reply(BOT_MESSAGES.STOP);
+    } catch (error) {
+      this.logger.error(`Failed to update user status for ${chatId}:`, error);
+      await ctx.reply('❌ Failed to stop the bot. Please try again.');
+    }
+  }
+
+  /**
+   * Handle my_chat_member update
+   * Detects when user blocks, removes, or reactivates the bot
+   * Sets user status to INACTIVE when bot is blocked/removed
+   */
+  @On('my_chat_member')
+  async onMyChatMember(@Ctx() ctx: BotContext): Promise<void> {
+    const update = ctx.update as any;
+    const myChatMember = update.my_chat_member;
+
+    if (!myChatMember) {
+      return;
+    }
+
+    const chatId = myChatMember.chat?.id;
+    const newStatus = myChatMember.new_chat_member?.status;
+    const oldStatus = myChatMember.old_chat_member?.status;
+    const from = myChatMember.from;
+
+    if (!chatId) {
+      this.logger.warn('my_chat_member update received but chat ID is missing');
+      return;
+    }
+
+    const inactiveStatuses = ['kicked', 'left', 'restricted'];
+
+    try {
+      if (!from) {
+        this.logger.warn('my_chat_member update received but user info is missing');
+        return;
+      }
+
+      if (inactiveStatuses.includes(newStatus)) {
+        await this.usersService.upsertByChatId({
+          chat_id: chatId,
+          name:
+            [from.first_name, from.last_name].filter(Boolean).join(' ') || '',
+          username: from.username || '',
+          status: UserStatus.INACTIVE,
+        });
+        this.logger.log(
+          `User ${chatId} blocked/removed bot (status: ${oldStatus} -> ${newStatus}), saved with INACTIVE status`,
+        );
+      }
+    } catch (error) {
+      this.logger.error(
+        `Failed to update user status for ${chatId} on my_chat_member update:`,
+        error,
+      );
     }
   }
 
@@ -179,10 +281,15 @@ export class BotUpdate {
 
   /**
    * Handle unknown text messages
-   * Provides guidance to user
+   * Provides guidance to user with a button to go to start
    */
   @On('text')
   async onText(@Ctx() ctx: BotContext): Promise<void> {
-    await ctx.reply(BOT_MESSAGES.UNKNOWN_COMMAND);
+    await ctx.reply(
+      BOT_MESSAGES.UNKNOWN_COMMAND,
+      Markup.inlineKeyboard([
+        [Markup.button.callback('🔄 Переглянути каталог', 'start')],
+      ]),
+    );
   }
 }

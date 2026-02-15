@@ -2,13 +2,21 @@
  * API endpoint paths
  */
 export const API_ENDPOINTS = {
-  CATEGORIES: '/categories',
-  CATEGORY_BY_ID: (id: number) => `/categories/${id}`,
-  CATEGORY_IMAGE_FILE_ID: (id: number) => `/categories/${id}/image-file-id`,
-  PRODUCTS: '/products',
-  PRODUCT_BY_ID: (id: number) => `/products/${id}`,
-  PRODUCT_IMAGE_FILE_ID: (id: number) => `/products/${id}/image-file-id`,
-  TEMPLATE_BY_TYPE: (type: string) => `../../telegram/template/by-type/${type}`,
+  CATEGORIES: '/telegram/catalog/categories',
+  CATEGORY_BY_ID: (id: number) => `/telegram/catalog/categories/${id}`,
+  CATEGORY_IMAGE_FILE_ID: (id: number) =>
+    `/telegram/catalog/categories/${id}/image-file-id`,
+  PRODUCTS: '/telegram/catalog/products',
+  PRODUCT_BY_ID: (id: number) => `/telegram/catalog/products/${id}`,
+  PRODUCT_IMAGE_FILE_ID: (id: number) =>
+    `/telegram/catalog/products/${id}/image-file-id`,
+  POST_BY_TYPE: (type: string) => `/telegram/post/${type}`,
+  POST_BY_PRODUCT: (productId: number) => `/telegram/post/product/${productId}`,
+  POST_IMAGE_FILE_ID: (id: number) => `/telegram/post/${id}/image-file-id`,
+  USERS_MASS_UPDATE: '/telegram/users/mass-update',
+  MAILOUT_PRODUCTS: '/telegram/mailout/products',
+  MAILOUT_BY_PRODUCTS: '/telegram/mailout/by-products',
+  MAILOUT_DELETE: '/telegram/mailout/delete',
 } as const;
 
 /**

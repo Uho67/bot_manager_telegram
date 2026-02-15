@@ -2,13 +2,13 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Context, Markup } from 'telegraf';
 import { CategoryService } from '@/api/catalog/category.service';
 import { ProductService } from '@/api/catalog/product.service';
-import { TemplateService } from '@/api/catalog/template.service';
+import { PostService } from '@/api/catalog/post.service';
 import {
   Product,
   Category,
   CategoryListItem,
+  Post,
   Template,
-  TemplateType,
   ButtonRow,
   MatchContext,
 } from '@/types';
@@ -32,7 +32,7 @@ export class BotService {
   constructor(
     private readonly categoryService: CategoryService,
     private readonly productService: ProductService,
-    private readonly templateService: TemplateService,
+    private readonly postService: PostService,
     private readonly imageHandler: ImageHandlerService,
     private readonly messageFormatter: MessageFormatterService,
     private readonly buttonBuilder: ButtonBuilderService,
@@ -68,13 +68,6 @@ export class BotService {
     return this.buttonBuilder.buildCategoryContentButtons(category);
   }
 
-  /**
-   * Send category with optional image
-   * - If image_file_id exists, use it directly (instant)
-   * - If not but image URL exists, download, upload to Telegram, save file_id to API
-   * - If no image at all, send text only with buttons
-   * - Always includes back button at the bottom
-   */
   async sendCategory(
     ctx: BotContext,
     category: Category,
@@ -85,8 +78,17 @@ export class BotService {
     buttons = this.buttonBuilder.addBackButton(buttons, parentCategoryId);
     const caption = BOT_MESSAGES.CATEGORY_LABEL(category.name);
 
+    // Check if image URL is valid (not empty, not just base URL)
+    const hasValidImageUrl =
+      category.image &&
+      category.image.trim() !== '' &&
+      category.image.trim() !== '/' &&
+      !category.image.endsWith('/') &&
+      (category.image.startsWith('http://') ||
+        category.image.startsWith('https://'));
+
     // No image - render as text with buttons
-    if (!category.image && !category.image_file_id) {
+    if (!hasValidImageUrl && !category.image_file_id) {
       await ctx.reply(caption, {
         parse_mode: 'Markdown',
         ...Markup.inlineKeyboard(buttons),
@@ -107,13 +109,27 @@ export class BotService {
         this.logger.warn(
           `Stored file_id invalid for category ${category.id}, re-uploading`,
         );
-        // Continue to download and re-upload
+        // Continue to download and re-upload if we have a valid image URL
+        if (!hasValidImageUrl) {
+          // No valid image URL, fall back to text
+          await ctx.reply(caption, {
+            parse_mode: 'Markdown',
+            ...Markup.inlineKeyboard(buttons),
+          });
+          return;
+        }
       }
     }
 
-    // Has image URL but no file_id - download, upload, save file_id
-    if (category.image) {
+    // Has valid image URL but no file_id - download, upload, save file_id
+    if (hasValidImageUrl) {
       await this.sendCategoryWithImageUrl(ctx, category, caption, buttons);
+    } else {
+      // Fallback: render as text if image_file_id failed and no valid URL
+      await ctx.reply(caption, {
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard(buttons),
+      });
     }
   }
 
@@ -163,13 +179,13 @@ export class BotService {
     }
   }
 
-  // ==================== Template Methods ====================
+  // ==================== Post Methods ====================
 
   /**
-   * Get template by type
+   * Get post by type (e.g., 'start')
    */
-  async getTemplate(type: TemplateType | string): Promise<Template | null> {
-    return this.templateService.getTemplateByType(type);
+  async getPostByType(type: string): Promise<Post | null> {
+    return this.postService.getPostByType(type);
   }
 
   /**
@@ -177,6 +193,97 @@ export class BotService {
    */
   buildTemplateButtons(template: Template) {
     return this.buttonBuilder.buildTemplateButtons(template);
+  }
+
+  /**
+   * Send post with optional image and template buttons
+   * - Gets post from API/cache
+   * - Builds buttons from post template layout
+   * - Renders post name, description, image, and buttons
+   * @param post - Post to send
+   */
+  async sendPost(ctx: BotContext, post: Post): Promise<void> {
+    // Build buttons from post template layout
+    const buttons = post.template
+      ? this.buildTemplateButtons(post.template)
+      : [];
+
+    const caption = this.messageFormatter.formatPostMessage(post);
+
+    // No image - render as text with buttons
+    if (!post.image && !post.image_file_id) {
+      await ctx.reply(caption, {
+        parse_mode: 'HTML',
+        ...(buttons.length > 0 ? Markup.inlineKeyboard(buttons) : {}),
+      });
+      return;
+    }
+
+    // Has image_file_id - use it directly
+    if (post.image_file_id) {
+      try {
+        await ctx.replyWithPhoto(post.image_file_id, {
+          caption,
+          parse_mode: 'HTML',
+          ...(buttons.length > 0 ? Markup.inlineKeyboard(buttons) : {}),
+        });
+        return;
+      } catch (error) {
+        this.logger.warn(
+          `Stored file_id invalid for post ${post.id}, re-uploading`,
+        );
+        // Continue to download and re-upload
+      }
+    }
+
+    // Has image URL but no file_id - download, upload, save file_id
+    if (post.image) {
+      await this.sendPostWithImageUrl(ctx, post, caption, buttons);
+    }
+  }
+
+  /**
+   * Send post with image URL (download and upload)
+   */
+  private async sendPostWithImageUrl(
+    ctx: BotContext,
+    post: Post,
+    caption: string,
+    buttons: ButtonRow,
+  ): Promise<void> {
+    try {
+      const imageBuffer = await this.imageHandler.downloadImage(post.image!);
+      if (!imageBuffer) {
+        await ctx.reply(caption, {
+          parse_mode: 'HTML',
+          ...(buttons.length > 0 ? Markup.inlineKeyboard(buttons) : {}),
+        });
+        return;
+      }
+
+      const sentMessage = await ctx.replyWithPhoto(
+        { source: imageBuffer },
+        {
+          caption,
+          parse_mode: 'HTML',
+          ...(buttons.length > 0 ? Markup.inlineKeyboard(buttons) : {}),
+        },
+      );
+
+      // Save file_id to API in background (don't wait)
+      const fileId = this.imageHandler.extractLargestPhotoFileId(
+        sentMessage.photo,
+      );
+      if (fileId) {
+        this.imageHandler.savePostImageFileId(post.id, fileId);
+      }
+    } catch (error) {
+      this.logger.error('Failed to send post image', error);
+      await ctx.reply(caption, {
+        parse_mode: 'HTML',
+        ...(buttons.length > 0 ? Markup.inlineKeyboard(buttons) : {}),
+      });
+    }
   }
 
   /**
@@ -211,11 +318,10 @@ export class BotService {
     product: Product,
     categoryId?: number,
   ): Promise<void> {
-    // Get the product template
-    const template = await this.getTemplate(TemplateType.PRODUCT);
-
-    // Build buttons from template layout if available
-    let buttons = template ? this.buildTemplateButtons(template) : [];
+    // Build buttons from product template layout
+    let buttons: ButtonRow = product.template
+      ? this.buildTemplateButtons(product.template)
+      : [];
     // Add back button (to category if provided, otherwise to start)
     buttons = this.buttonBuilder.addBackButton(buttons, categoryId);
 

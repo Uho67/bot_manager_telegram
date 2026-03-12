@@ -14,9 +14,10 @@ export const API_ENDPOINTS = {
   POST_BY_PRODUCT: (productId: number) => `/telegram/post/product/${productId}`,
   POST_IMAGE_FILE_ID: (id: number) => `/telegram/post/${id}/image-file-id`,
   USERS_MASS_UPDATE: '/telegram/users/mass-update',
-  MAILOUT_PRODUCTS: '/telegram/mailout/products',
-  MAILOUT_BY_PRODUCTS: '/telegram/mailout/by-products',
-  MAILOUT_DELETE: '/telegram/mailout/delete',
+  MAILOUT_POST_POSTS: '/telegram/post-mailout/posts',
+  MAILOUT_POST_BY_POSTS: '/telegram/post-mailout/by-posts',
+  MAILOUT_POST_DELETE: '/telegram/post-mailout/delete',
+  POST_BY_ID: (id: number) => `/telegram/post/${id}`,
 } as const;
 
 /**

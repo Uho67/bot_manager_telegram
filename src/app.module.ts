@@ -7,6 +7,7 @@ import { CacheModule } from './cache/cache.module';
 import { ApiModule } from './api/api.module';
 import { BotModule } from './bot/bot.module';
 import { CronModule } from './cron/cron.module';
+import { SentMessageModule } from './sent-message/sent-message.module';
 
 @Module({
   imports: [
@@ -25,6 +26,8 @@ import { CronModule } from './cron/cron.module';
     BotModule,
     // Cron jobs
     CronModule,
+    // Sent message tracking
+    SentMessageModule,
   ],
   controllers: [AppController],
   providers: [AppService],

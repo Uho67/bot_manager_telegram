@@ -10,6 +10,7 @@ import { API_ENDPOINTS, CACHE_PREFIXES } from '@/common/constants';
 import { ButtonBuilderService } from '@/bot/services/button-builder.service';
 import { ImageHandlerService } from '@/bot/services/image-handler.service';
 import { MessageFormatterService } from '@/bot/services/message-formatter.service';
+import { SentMessageService } from '@/sent-message/sent-message.service';
 
 interface PostMailoutPostsResponse {
   post_ids: number[];
@@ -46,6 +47,7 @@ export class PostMailoutCronService {
     private readonly buttonBuilder: ButtonBuilderService,
     private readonly imageHandler: ImageHandlerService,
     private readonly messageFormatter: MessageFormatterService,
+    private readonly sentMessageService: SentMessageService,
   ) {}
 
   /**
@@ -146,10 +148,17 @@ export class PostMailoutCronService {
       );
 
       const sentMailoutIds: string[] = [];
+      const sentRecords: { post_id: number; chat_id: number; message_id: number; sent_at: Date }[] = [];
       for (const mailout of mailouts) {
         try {
-          await this.sendPostToChatId(mailout.chat_id, post);
+          const result = await this.sendPostToChatId(mailout.chat_id, post);
           sentMailoutIds.push(mailout.id.toString());
+          sentRecords.push({
+            post_id: post.id,
+            chat_id: parseInt(mailout.chat_id, 10),
+            message_id: result.message_id,
+            sent_at: new Date(),
+          });
           this.logger.log(
             `Sent post ${post.id} to chat_id ${mailout.chat_id} (mailout ${mailout.id})`,
           );
@@ -162,6 +171,7 @@ export class PostMailoutCronService {
       }
 
       if (sentMailoutIds.length > 0) {
+        await this.sentMessageService.bulkInsert(sentRecords);
         await this.deletePostMailouts(sentMailoutIds);
         totalSent += sentMailoutIds.length;
         this.logger.log(
@@ -240,9 +250,9 @@ export class PostMailoutCronService {
   }
 
   /**
-   * Send post directly to a chat_id
+   * Send post directly to a chat_id, returns the sent Telegram message
    */
-  private async sendPostToChatId(chatId: string, post: Post): Promise<void> {
+  private async sendPostToChatId(chatId: string, post: Post): Promise<{ message_id: number }> {
     const chatIdNum = parseInt(chatId, 10);
     if (isNaN(chatIdNum)) {
       throw new Error(`Invalid chat_id: ${chatId}`);
@@ -255,21 +265,19 @@ export class PostMailoutCronService {
     const caption = this.messageFormatter.formatPostMessage(post);
 
     if (!post.image && !post.image_file_id) {
-      await this.bot.telegram.sendMessage(chatIdNum, caption, {
+      return this.bot.telegram.sendMessage(chatIdNum, caption, {
         parse_mode: 'HTML',
         ...(buttons.length > 0 ? Markup.inlineKeyboard(buttons) : {}),
       });
-      return;
     }
 
     if (post.image_file_id) {
       try {
-        await this.bot.telegram.sendPhoto(chatIdNum, post.image_file_id, {
+        return await this.bot.telegram.sendPhoto(chatIdNum, post.image_file_id, {
           caption,
           parse_mode: 'HTML',
           ...(buttons.length > 0 ? Markup.inlineKeyboard(buttons) : {}),
         });
-        return;
       } catch {
         this.logger.warn(
           `Stored file_id invalid for post ${post.id}, re-uploading`,
@@ -278,27 +286,32 @@ export class PostMailoutCronService {
     }
 
     if (post.image) {
-      await this.sendPostWithImageUrl(chatIdNum, post, caption, buttons);
+      return this.sendPostWithImageUrl(chatIdNum, post, caption, buttons);
     }
+
+    // Fallback: send as text if image path is unexpectedly empty
+    return this.bot.telegram.sendMessage(chatIdNum, caption, {
+      parse_mode: 'HTML',
+      ...(buttons.length > 0 ? Markup.inlineKeyboard(buttons) : {}),
+    });
   }
 
   /**
-   * Send post with image URL (download and upload)
+   * Send post with image URL (download and upload), returns sent message
    */
   private async sendPostWithImageUrl(
     chatId: number,
     post: Post,
     caption: string,
     buttons: ButtonRow,
-  ): Promise<void> {
+  ): Promise<{ message_id: number }> {
     try {
       const imageBuffer = await this.imageHandler.downloadImage(post.image!);
       if (!imageBuffer) {
-        await this.bot.telegram.sendMessage(chatId, caption, {
+        return this.bot.telegram.sendMessage(chatId, caption, {
           parse_mode: 'HTML',
           ...(buttons.length > 0 ? Markup.inlineKeyboard(buttons) : {}),
         });
-        return;
       }
 
       const sentMessage = await this.bot.telegram.sendPhoto(
@@ -317,9 +330,11 @@ export class PostMailoutCronService {
       if (fileId) {
         this.imageHandler.savePostImageFileId(post.id, fileId);
       }
+
+      return sentMessage;
     } catch (error) {
       this.logger.error('Failed to send post image', error);
-      await this.bot.telegram.sendMessage(chatId, caption, {
+      return this.bot.telegram.sendMessage(chatId, caption, {
         parse_mode: 'HTML',
         ...(buttons.length > 0 ? Markup.inlineKeyboard(buttons) : {}),
       });

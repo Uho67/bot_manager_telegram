@@ -10,8 +10,8 @@ cd "$APP_DIR"
 echo "==> Pulling latest code..."
 git pull
 
-echo "==> Installing dependencies (production)..."
-npm ci --omit=dev
+echo "==> Installing dependencies..."
+npm ci
 
 echo "==> Building..."
 npm run build

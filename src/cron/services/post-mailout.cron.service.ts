@@ -23,6 +23,7 @@ interface PostMailout {
   chat_id: string;
   post_id: number;
   status: string;
+  remove_mode: string;
   created_at: string;
   sent_at: string | null;
 }
@@ -153,12 +154,14 @@ export class PostMailoutCronService {
         try {
           const result = await this.sendPostToChatId(mailout.chat_id, post);
           sentMailoutIds.push(mailout.id.toString());
-          sentRecords.push({
-            post_id: post.id,
-            chat_id: parseInt(mailout.chat_id, 10),
-            message_id: result.message_id,
-            sent_at: new Date(),
-          });
+          if (mailout.remove_mode === 'remove') {
+            sentRecords.push({
+              post_id: post.id,
+              chat_id: parseInt(mailout.chat_id, 10),
+              message_id: result.message_id,
+              sent_at: new Date(),
+            });
+          }
           this.logger.log(
             `Sent post ${post.id} to chat_id ${mailout.chat_id} (mailout ${mailout.id})`,
           );
@@ -171,7 +174,9 @@ export class PostMailoutCronService {
       }
 
       if (sentMailoutIds.length > 0) {
-        await this.sentMessageService.bulkInsert(sentRecords);
+        if (sentRecords.length > 0) {
+          await this.sentMessageService.bulkInsert(sentRecords);
+        }
         await this.deletePostMailouts(sentMailoutIds);
         totalSent += sentMailoutIds.length;
         this.logger.log(

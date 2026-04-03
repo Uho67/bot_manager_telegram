@@ -19,7 +19,7 @@ async function bootstrap() {
     }),
   );
 
-  const port = process.env.PORT ?? 3000;
+  const port = process.env.TELEGRAM_PORT_BOT ?? 3000;
   await app.listen(port);
 
   logger.log(`🚀 Application running on port ${port}`);

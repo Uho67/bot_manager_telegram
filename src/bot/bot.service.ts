@@ -82,7 +82,7 @@ export class BotService {
     let buttons = this.buildCategoryContentButtons(category);
     // Add back button (to parent category if provided, otherwise to start)
     buttons = this.buttonBuilder.addBackButton(buttons, parentCategoryId);
-    const caption = BOT_MESSAGES.(category.name);
+    const caption = BOT_MESSAGES.CATEGORY_LABEL(category.name);
 
     // Check if image URL is valid (not empty, not just base URL)
     const hasValidImageUrl =

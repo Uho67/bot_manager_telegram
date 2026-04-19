@@ -113,6 +113,31 @@ export class ImageHandlerService {
   }
 
   /**
+   * Save additional category image file ID to API (fire and forget)
+   * @param imageId - CategoryImage ID
+   * @param fileId - Telegram file ID
+   */
+  saveCategoryAdditionalImageFileId(imageId: number, fileId: string): void {
+    firstValueFrom(
+      this.httpService.patch(
+        API_ENDPOINTS.CATEGORY_ADDITIONAL_IMAGE_FILE_ID(imageId),
+        {
+          image_file_id: fileId,
+        },
+      ),
+    )
+      .then(() => {
+        this.logger.debug(`Saved file_id for category additional image ${imageId}`);
+      })
+      .catch((error) => {
+        this.logger.error(
+          `Failed to save file_id for category additional image ${imageId}`,
+          error,
+        );
+      });
+  }
+
+  /**
    * Save additional product image file ID to API (fire and forget)
    * @param imageId - ProductImage ID
    * @param fileId - Telegram file ID

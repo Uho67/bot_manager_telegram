@@ -73,6 +73,12 @@ export class BotService {
     category: Category,
     parentCategoryId?: number,
   ): Promise<void> {
+    // If category has additional images, send them first as a media group
+    if (category.additional_images && category.additional_images.length > 0) {
+      await this.sendCategoryAdditionalImages(ctx, category);
+    }
+
+    // Then send the main category message (unchanged logic)
     let buttons = this.buildCategoryContentButtons(category);
     // Add back button (to parent category if provided, otherwise to start)
     buttons = this.buttonBuilder.addBackButton(buttons, parentCategoryId);
@@ -130,6 +136,81 @@ export class BotService {
         parse_mode: 'Markdown',
         ...Markup.inlineKeyboard(buttons),
       });
+    }
+  }
+
+  /**
+   * Send category additional images as a media group (before the main message)
+   */
+  private async sendCategoryAdditionalImages(
+    ctx: BotContext,
+    category: Category,
+  ): Promise<void> {
+    const mediaItems: Array<{
+      type: 'photo';
+      media: string | { source: Buffer };
+    }> = [];
+
+    const imageMapping: Array<{
+      id: number;
+      hadFileId: boolean;
+    }> = [];
+
+    for (let i = 0; i < Math.min(category.additional_images.length, 10); i++) {
+      const img = category.additional_images[i];
+      let media: string | { source: Buffer } | null = null;
+
+      if (img.image_file_id) {
+        media = img.image_file_id;
+      } else if (img.image) {
+        const hasValidUrl =
+          img.image.startsWith('http://') || img.image.startsWith('https://');
+        if (hasValidUrl) {
+          const buffer = await this.imageHandler.downloadImage(img.image);
+          if (buffer) {
+            media = { source: buffer };
+          }
+        }
+      }
+
+      if (!media) continue;
+
+      mediaItems.push({ type: 'photo', media });
+      imageMapping.push({ id: img.id, hadFileId: !!img.image_file_id });
+    }
+
+    if (mediaItems.length === 0) return;
+
+    try {
+      if (mediaItems.length === 1) {
+        // Single image — use replyWithPhoto (no caption, no buttons)
+        const sentMessage = await ctx.replyWithPhoto(mediaItems[0].media as any, {});
+
+        // Cache file_id if needed
+        if (sentMessage.photo && imageMapping[0] && !imageMapping[0].hadFileId) {
+          const fileId = this.imageHandler.extractLargestPhotoFileId(sentMessage.photo);
+          if (fileId) {
+            this.imageHandler.saveCategoryAdditionalImageFileId(imageMapping[0].id, fileId);
+          }
+        }
+      } else {
+        // Multiple images — send as media group
+        const sentMessages = await ctx.replyWithMediaGroup(mediaItems as any);
+
+        // Cache file_ids from sent messages (fire-and-forget)
+        for (let i = 0; i < sentMessages.length; i++) {
+          const msg = sentMessages[i] as any;
+          const mapping = imageMapping[i];
+          if (msg.photo && mapping && !mapping.hadFileId) {
+            const fileId = this.imageHandler.extractLargestPhotoFileId(msg.photo);
+            if (fileId) {
+              this.imageHandler.saveCategoryAdditionalImageFileId(mapping.id, fileId);
+            }
+          }
+        }
+      }
+    } catch (error) {
+      this.logger.error('Failed to send category additional images', error);
     }
   }
 

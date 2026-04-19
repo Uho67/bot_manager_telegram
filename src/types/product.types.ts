@@ -44,6 +44,16 @@ export interface CategoryListItem {
 }
 
 /**
+ * Additional category image from external API
+ */
+export interface CategoryImage {
+    id: number;
+    image: string | null;
+    image_file_id: string | null;
+    sort_order: number;
+}
+
+/**
  * Full category with products and child categories (from /categories/:id endpoint)
  */
 export interface Category {
@@ -52,6 +62,7 @@ export interface Category {
     is_root: boolean;
     image: string | null;
     image_file_id: string | null;
+    additional_images: CategoryImage[];
     layout: CategoryButton[][];
     // Legacy fields (kept for backward compatibility, but layout takes precedence)
     child_categories?: CategoryListItem[];

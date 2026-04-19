@@ -6,6 +6,8 @@ export const API_ENDPOINTS = {
   CATEGORY_BY_ID: (id: number) => `/telegram/catalog/categories/${id}`,
   CATEGORY_IMAGE_FILE_ID: (id: number) =>
     `/telegram/catalog/categories/${id}/image-file-id`,
+  CATEGORY_ADDITIONAL_IMAGE_FILE_ID: (imageId: number) =>
+    `/telegram/catalog/category-images/${imageId}/image-file-id`,
   PRODUCTS: '/telegram/catalog/products',
   PRODUCT_BY_ID: (id: number) => `/telegram/catalog/products/${id}`,
   PRODUCT_IMAGE_FILE_ID: (id: number) =>

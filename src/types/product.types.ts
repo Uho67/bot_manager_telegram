@@ -10,6 +10,16 @@ export interface CategoryButton {
 import { Template } from './template.types';
 
 /**
+ * Additional product image from external API
+ */
+export interface ProductImage {
+    id: number;
+    image: string | null;
+    image_file_id: string | null;
+    sort_order: number;
+}
+
+/**
  * Product data structure from external API
  */
 export interface Product {
@@ -18,8 +28,10 @@ export interface Product {
     description: string;
     image: string | null;
     image_file_id: string | null;
+    additional_images: ProductImage[];
     sort_order: number;
     template?: Template;
+    images_template?: Template;
 }
 
 /**

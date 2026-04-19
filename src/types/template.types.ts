@@ -15,6 +15,7 @@ export enum TemplateType {
   POST = 'post',
   PRODUCT = 'product',
   CATEGORY = 'category',
+  IMAGES = 'images',
 }
 
 /**
@@ -24,5 +25,6 @@ export interface Template {
   id: number;
   name: string;
   type: TemplateType | string;
+  text?: string;
   layout: TemplateButton[][];
 }

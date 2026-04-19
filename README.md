@@ -183,6 +183,10 @@ npm run lint         # ESLint + auto-fix
 npm run format       # Prettier format
 ```
 
+> **Note:** No global `nest` CLI required. `npm run` scripts automatically use the local
+> `node_modules/.bin/nest`. If you see `Command 'nest' not found`, use `npm run start:dev`
+> instead of calling `nest` directly.
+
 ---
 
 ## Tests

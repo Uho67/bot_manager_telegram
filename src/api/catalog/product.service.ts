@@ -50,7 +50,11 @@ export class ProductService {
     const { data } = await firstValueFrom(
       this.httpService.get<Product>(API_ENDPOINTS.PRODUCT_BY_ID(id)),
     );
-    if (data && data.image_file_id) {
+    const additionalImagesCached =
+      !data.additional_images?.length ||
+      data.additional_images.every((img) => img.image_file_id);
+
+    if (data && data.image_file_id && additionalImagesCached) {
       this.cacheService.set(cacheKey, data);
     }
 

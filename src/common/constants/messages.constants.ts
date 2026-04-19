@@ -9,7 +9,7 @@ export const BOT_MESSAGES = {
   CATEGORY_EMPTY: '📭 Ця категорія порожня.',
   TEMPLATE_UNAVAILABLE: '📭 Шаблон недоступний на даний момент.',
   UNKNOWN_COMMAND: `🤔 Я не зрозумів.\n\nВикористайте /start для перегляду товарів`,
-  CATEGORY_LABEL: (name: string) => `📂 *${name}*\n\nВиберіть елемент:`,
+  CATEGORY_LABEL: (name: string) => `📂 *${name}*`,
   STOP: '🛑 Бот зупинено. Вам встановлено неактивний статус.\n\nВикористайте /start для повторної активації.',
 } as const;
 

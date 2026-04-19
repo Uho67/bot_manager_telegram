@@ -124,6 +124,36 @@ export class BotUpdate {
   }
 
   /**
+   * Handle "Більше фото" button clicks
+   * Sends all product images (main + additional) as a media group
+   */
+  @Action(/^product_photos\/(\d+)(?:\?from=(\d+))?$/)
+  async onProductPhotos(@Ctx() ctx: BotContext): Promise<void> {
+    const match = (ctx as any).match;
+    const productId = parseInt(match[1], 10);
+    const categoryId = match[2] ? parseInt(match[2], 10) : undefined;
+    this.logger.log(`Product photos ${productId} requested${categoryId ? ` from category ${categoryId}` : ''}`);
+
+    await ctx.answerCbQuery().catch((err) => {
+      this.logger.warn('Failed to answer callback query:', err.message);
+    });
+
+    const product = await this.botService.getProductById(productId);
+
+    if (!product) {
+      await ctx.reply(
+        BOT_MESSAGES.PRODUCT_NOT_FOUND,
+        Markup.inlineKeyboard([
+          [Markup.button.callback('🔄 Переглянути каталог', 'start')],
+        ]),
+      );
+      return;
+    }
+
+    await this.botService.sendProductPhotos(ctx, product, categoryId);
+  }
+
+  /**
    * Handle "start" callback button clicks
    * Returns user to main menu
    * Handles both 'start' and '/start' button values

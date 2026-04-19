@@ -113,6 +113,31 @@ export class ImageHandlerService {
   }
 
   /**
+   * Save additional product image file ID to API (fire and forget)
+   * @param imageId - ProductImage ID
+   * @param fileId - Telegram file ID
+   */
+  saveAdditionalImageFileId(imageId: number, fileId: string): void {
+    firstValueFrom(
+      this.httpService.patch(
+        API_ENDPOINTS.PRODUCT_ADDITIONAL_IMAGE_FILE_ID(imageId),
+        {
+          image_file_id: fileId,
+        },
+      ),
+    )
+      .then(() => {
+        this.logger.debug(`Saved file_id for additional image ${imageId}`);
+      })
+      .catch((error) => {
+        this.logger.error(
+          `Failed to save file_id for additional image ${imageId}`,
+          error,
+        );
+      });
+  }
+
+  /**
    * Extract largest photo file ID from Telegram message
    * @param photo - Array of photo sizes from Telegram
    * @returns File ID of the largest photo

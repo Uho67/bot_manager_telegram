@@ -10,6 +10,8 @@ export const API_ENDPOINTS = {
   PRODUCT_BY_ID: (id: number) => `/telegram/catalog/products/${id}`,
   PRODUCT_IMAGE_FILE_ID: (id: number) =>
     `/telegram/catalog/products/${id}/image-file-id`,
+  PRODUCT_ADDITIONAL_IMAGE_FILE_ID: (imageId: number) =>
+    `/telegram/catalog/product-images/${imageId}/image-file-id`,
   POST_BY_TYPE: (type: string) => `/telegram/post/${type}`,
   POST_BY_PRODUCT: (productId: number) => `/telegram/post/product/${productId}`,
   POST_IMAGE_FILE_ID: (id: number) => `/telegram/post/${id}/image-file-id`,

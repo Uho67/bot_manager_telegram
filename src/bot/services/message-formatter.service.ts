@@ -19,7 +19,7 @@ export class MessageFormatterService {
   }
 
   /**
-   * Format post message with name and description
+   * Format post message with description only (name excluded)
    * @param post - Post with name and description
    * @returns Formatted HTML message
    */
@@ -27,8 +27,7 @@ export class MessageFormatterService {
     name: string;
     description: string;
   }): string {
-    const escapedName = this.escapeHtml(post.name);
-    return `<b>${escapedName}</b>\n\n${post.description}`;
+    return post.description;
   }
 
   /**

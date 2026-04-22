@@ -15,9 +15,9 @@ export class UserSyncCronService {
 	) { }
 
 	/**
-	 * Sync users to external API every 5 minutes
+	 * Sync users to external API every 4 hours
 	 */
-	@Cron('*/1 * * * *')
+	@Cron('0 */4 * * *')
 	async handleUserSync() {
 		this.logger.log('Starting user sync...');
 

@@ -55,6 +55,15 @@ export class ButtonBuilderService {
               `product/${productId}?from=${category.id}`,
             );
           }
+          if (
+            button.button_type === 'callback' &&
+            button.value.startsWith('category/')
+          ) {
+            return Markup.button.callback(
+              button.label,
+              `${button.value}?from=${category.id}`,
+            );
+          }
           return this.createButton(button);
         });
         this.logger.debug(
@@ -80,7 +89,7 @@ export class ButtonBuilderService {
       ...sortedCategories.map((child) => [
         Markup.button.callback(
           `${BUTTON_EMOJIS.CATEGORY} ${child.name}`,
-          `category/${child.id}`,
+          `category/${child.id}?from=${category.id}`,
         ),
       ]),
       ...sortedProducts.map((product) => [

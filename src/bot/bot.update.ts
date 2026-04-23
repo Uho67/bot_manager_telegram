@@ -47,10 +47,12 @@ export class BotUpdate {
    * Handle category button clicks
    * Displays category content with subcategories and products
    */
-  @Action(/^category\/(\d+)$/)
+  @Action(/^category\/(\d+)(?:\?from=(\d+))?$/)
   async onCategoryClick(@Ctx() ctx: BotContext): Promise<void> {
-    const categoryId = this.botService.getIdFromMatch(ctx as any);
-    this.logger.log(`Category ${categoryId} clicked`);
+    const match = (ctx as any).match;
+    const categoryId = parseInt(match[1], 10);
+    const parentCategoryId = match[2] ? parseInt(match[2], 10) : undefined;
+    this.logger.log(`Category ${categoryId} clicked${parentCategoryId ? ` from category ${parentCategoryId}` : ''}`);
 
     // Answer callback query immediately to prevent timeout
     await ctx.answerCbQuery().catch((err) => {
@@ -86,8 +88,7 @@ export class BotUpdate {
       return;
     }
 
-    // For now, back button goes to start (can be enhanced to track parent category)
-    await this.botService.sendCategory(ctx, category);
+    await this.botService.sendCategory(ctx, category, parentCategoryId);
   }
 
   /**

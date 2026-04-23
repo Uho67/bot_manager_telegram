@@ -30,6 +30,7 @@ export interface Product {
     image_file_id: string | null;
     additional_images: ProductImage[];
     sort_order: number;
+    enabled: boolean;
     template?: Template;
     images_template?: Template;
 }

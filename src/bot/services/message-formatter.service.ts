@@ -13,9 +13,11 @@ export class MessageFormatterService {
   formatProductMessage(product: {
     name: string;
     description: string;
+    enabled?: boolean;
   }): string {
     const escapedName = this.escapeHtml(product.name);
-    return `<b>${escapedName}</b>\n\n${product.description}`;
+    const badge = product.enabled === false ? ' 🔴 немає в наявності' : '';
+    return `<b>${escapedName}</b>${badge}\n\n${product.description}`;
   }
 
   /**

@@ -9,6 +9,7 @@ import {
 } from '@nestjs/common';
 import { CacheService } from './cache.service';
 import { BearerAuthGuard } from '@/common/guards';
+import { CACHE_PREFIXES } from '@/common/constants/cache.constants';
 
 /**
  * Controller for cache management endpoints
@@ -40,6 +41,42 @@ export class CacheController {
 			message: 'Cache cleared successfully',
 			cleared,
 		};
+	}
+
+	/**
+	 * Clear only product cache entries (product:*)
+	 * DELETE /cache/products
+	 */
+	@Delete('products')
+	@HttpCode(HttpStatus.OK)
+	clearProductsCache(): { message: string; cleared: number } {
+		const cleared = this.cacheService.clearByPrefix(CACHE_PREFIXES.PRODUCT);
+		this.logger.log(`Products cache cleared: ${cleared} entries removed`);
+		return { message: 'Products cache cleared successfully', cleared };
+	}
+
+	/**
+	 * Clear only category cache entries (category:*)
+	 * DELETE /cache/categories
+	 */
+	@Delete('categories')
+	@HttpCode(HttpStatus.OK)
+	clearCategoriesCache(): { message: string; cleared: number } {
+		const cleared = this.cacheService.clearByPrefix(CACHE_PREFIXES.CATEGORY);
+		this.logger.log(`Categories cache cleared: ${cleared} entries removed`);
+		return { message: 'Categories cache cleared successfully', cleared };
+	}
+
+	/**
+	 * Clear only post cache entries (post:*)
+	 * DELETE /cache/posts
+	 */
+	@Delete('posts')
+	@HttpCode(HttpStatus.OK)
+	clearPostsCache(): { message: string; cleared: number } {
+		const cleared = this.cacheService.clearByPrefix(CACHE_PREFIXES.POST);
+		this.logger.log(`Posts cache cleared: ${cleared} entries removed`);
+		return { message: 'Posts cache cleared successfully', cleared };
 	}
 
 	/**

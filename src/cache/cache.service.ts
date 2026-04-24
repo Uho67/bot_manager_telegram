@@ -69,4 +69,14 @@ export class CacheService {
     }
     return allKeys.filter((key) => key.startsWith(prefix));
   }
+
+  /**
+   * Delete all entries whose key starts with the given prefix
+   * @returns Number of deleted entries
+   */
+  clearByPrefix(prefix: string): number {
+    const keys = this.keys(prefix);
+    keys.forEach((key) => this.cache.delete(key));
+    return keys.length;
+  }
 }

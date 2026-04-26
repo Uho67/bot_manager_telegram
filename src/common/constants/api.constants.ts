@@ -21,6 +21,7 @@ export const API_ENDPOINTS = {
   MAILOUT_POST_POSTS: '/telegram/post-mailout/posts',
   MAILOUT_POST_BY_POSTS: '/telegram/post-mailout/by-posts',
   MAILOUT_POST_DELETE: '/telegram/post-mailout/delete',
+  MAILOUT_POST_REPORT_BLOCKED: '/telegram/post-mailout/report-blocked',
   POST_BY_ID: (id: number) => `/telegram/post/${id}`,
 } as const;
 

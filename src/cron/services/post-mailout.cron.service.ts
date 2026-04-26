@@ -150,6 +150,8 @@ export class PostMailoutCronService {
 
       const sentMailoutIds: string[] = [];
       const sentRecords: { post_id: number; chat_id: number; message_id: number; sent_at: Date }[] = [];
+      const blockedItems: { mailoutId: string; chatId: string }[] = [];
+
       for (const mailout of mailouts) {
         try {
           const result = await this.sendPostToChatId(mailout.chat_id, post);
@@ -166,11 +168,22 @@ export class PostMailoutCronService {
             `Sent post ${post.id} to chat_id ${mailout.chat_id} (mailout ${mailout.id})`,
           );
         } catch (error) {
-          this.logger.error(
-            `Failed to send post to chat_id ${mailout.chat_id} (mailout ${mailout.id})`,
-            error,
-          );
+          if (this.isBotBlockedError(error)) {
+            this.logger.warn(
+              `User ${mailout.chat_id} has blocked the bot — deactivating (mailout ${mailout.id})`,
+            );
+            blockedItems.push({ mailoutId: mailout.id.toString(), chatId: mailout.chat_id });
+          } else {
+            this.logger.error(
+              `Failed to send post to chat_id ${mailout.chat_id} (mailout ${mailout.id})`,
+              error,
+            );
+          }
         }
+      }
+
+      if (blockedItems.length > 0) {
+        await this.reportBlockedUsers(blockedItems);
       }
 
       if (sentMailoutIds.length > 0) {
@@ -359,5 +372,42 @@ export class PostMailoutCronService {
       this.logger.error('Failed to delete post mailouts', error);
       throw error;
     }
+  }
+
+  /**
+   * Report blocked users to Symfony: delete their mailouts and set status to inactive.
+   */
+  private async reportBlockedUsers(
+    items: { mailoutId: string; chatId: string }[],
+  ): Promise<void> {
+    const mailoutIds = items.map((i) => i.mailoutId);
+    const chatIds = [...new Set(items.map((i) => i.chatId))];
+
+    try {
+      await firstValueFrom(
+        this.httpService.post(API_ENDPOINTS.MAILOUT_POST_REPORT_BLOCKED, {
+          mailout_ids: mailoutIds,
+          chat_ids: chatIds,
+        }),
+      );
+      this.logger.log(
+        `Reported ${items.length} blocked user(s) to Symfony (deactivated + mailouts removed)`,
+      );
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Unknown error';
+      this.logger.error('Failed to report blocked users to Symfony', msg);
+    }
+  }
+
+  /**
+   * Returns true when Telegram refused the send because the user blocked the bot (HTTP 403).
+   */
+  private isBotBlockedError(error: unknown): boolean {
+    if (typeof error !== 'object' || error === null) return false;
+    const response = (error as Record<string, unknown>)['response'];
+    if (typeof response === 'object' && response !== null) {
+      return (response as Record<string, unknown>)['error_code'] === 403;
+    }
+    return false;
   }
 }

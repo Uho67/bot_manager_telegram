@@ -12,6 +12,13 @@ import { ImageHandlerService } from '@/bot/services/image-handler.service';
 import { MessageFormatterService } from '@/bot/services/message-formatter.service';
 import { SentMessageService } from '@/sent-message/sent-message.service';
 
+const SEND_BATCH_SIZE = 30;
+const SEND_WINDOW_MS = 2000;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 interface PostMailoutPostsResponse {
   post_ids: number[];
 }
@@ -120,8 +127,7 @@ export class PostMailoutCronService {
   }
 
   /**
-   * Process a single post: fetch it, get mailouts in batches of 300,
-   * send to users, delete only sent records, repeat until done
+   * Process a single post: fetch up to 1000 mailouts, send with rate limiting, then delete sent records
    */
   private async processPost(postId: number): Promise<void> {
     this.logger.log(`Processing post ${postId}`);
@@ -135,24 +141,23 @@ export class PostMailoutCronService {
     const cacheKey = `${CACHE_PREFIXES.POST}${post.id}`;
     this.cacheService.set(cacheKey, post);
 
-    const batchSize = 300;
-    let totalSent = 0;
+    const mailouts = await this.getMailoutsByPost(postId, 1000);
+    if (mailouts.length === 0) {
+      this.logger.log(`No mailouts found for post ${postId}`);
+      return;
+    }
 
-    while (true) {
-      const mailouts = await this.getMailoutsByPost(postId, batchSize);
-      if (mailouts.length === 0) {
-        break;
-      }
+    this.logger.log(`Processing ${mailouts.length} mailout(s) for post ${postId}`);
 
-      this.logger.log(
-        `Processing batch of ${mailouts.length} mailout(s) for post ${postId}`,
-      );
+    const sentMailoutIds: string[] = [];
+    const sentRecords: { post_id: number; chat_id: number; message_id: number; sent_at: Date }[] = [];
+    const blockedItems: { mailoutId: string; chatId: string }[] = [];
 
-      const sentMailoutIds: string[] = [];
-      const sentRecords: { post_id: number; chat_id: number; message_id: number; sent_at: Date }[] = [];
-      const blockedItems: { mailoutId: string; chatId: string }[] = [];
+    for (let i = 0; i < mailouts.length; i += SEND_BATCH_SIZE) {
+      const chunk = mailouts.slice(i, i + SEND_BATCH_SIZE);
+      const chunkStart = Date.now();
 
-      for (const mailout of mailouts) {
+      for (const mailout of chunk) {
         try {
           const result = await this.sendPostToChatId(mailout.chat_id, post);
           sentMailoutIds.push(mailout.id.toString());
@@ -168,9 +173,9 @@ export class PostMailoutCronService {
             `Sent post ${post.id} to chat_id ${mailout.chat_id} (mailout ${mailout.id})`,
           );
         } catch (error) {
-          if (this.isBotBlockedError(error)) {
+          if (this.isUserUnreachableError(error)) {
             this.logger.warn(
-              `User ${mailout.chat_id} has blocked the bot — deactivating (mailout ${mailout.id})`,
+              `User ${mailout.chat_id} is unreachable (blocked or deleted) — deactivating (mailout ${mailout.id})`,
             );
             blockedItems.push({ mailoutId: mailout.id.toString(), chatId: mailout.chat_id });
           } else {
@@ -182,34 +187,28 @@ export class PostMailoutCronService {
         }
       }
 
-      if (blockedItems.length > 0) {
-        await this.reportBlockedUsers(blockedItems);
-      }
-
-      if (sentMailoutIds.length > 0) {
-        if (sentRecords.length > 0) {
-          await this.sentMessageService.bulkInsert(sentRecords);
+      const isLastChunk = i + SEND_BATCH_SIZE >= mailouts.length;
+      if (!isLastChunk) {
+        const elapsed = Date.now() - chunkStart;
+        const remaining = SEND_WINDOW_MS - elapsed;
+        if (remaining > 0) {
+          await sleep(remaining);
         }
-        await this.deletePostMailouts(sentMailoutIds);
-        totalSent += sentMailoutIds.length;
-        this.logger.log(
-          `Deleted ${sentMailoutIds.length} sent mailout(s) for post ${postId} (total: ${totalSent})`,
-        );
-      }
-
-      // If we got fewer than the batch size, there are no more mailouts
-      if (mailouts.length < batchSize) {
-        break;
       }
     }
 
-    if (totalSent > 0) {
-      this.logger.log(
-        `Finished post ${postId}: sent ${totalSent} mailout(s) total`,
-      );
-    } else {
-      this.logger.log(`No mailouts found for post ${postId}`);
+    if (blockedItems.length > 0) {
+      await this.reportBlockedUsers(blockedItems);
     }
+
+    if (sentMailoutIds.length > 0) {
+      if (sentRecords.length > 0) {
+        await this.sentMessageService.bulkInsert(sentRecords);
+      }
+      await this.deletePostMailouts(sentMailoutIds);
+    }
+
+    this.logger.log(`Finished post ${postId}: sent ${sentMailoutIds.length} mailout(s)`);
   }
 
   /**
@@ -296,7 +295,10 @@ export class PostMailoutCronService {
           parse_mode: 'HTML',
           ...(buttons.length > 0 ? Markup.inlineKeyboard(buttons) : {}),
         });
-      } catch {
+      } catch (error) {
+        if (this.isUserUnreachableError(error)) {
+          throw error;
+        }
         this.logger.warn(
           `Stored file_id invalid for post ${post.id}, re-uploading`,
         );
@@ -400,13 +402,18 @@ export class PostMailoutCronService {
   }
 
   /**
-   * Returns true when Telegram refused the send because the user blocked the bot (HTTP 403).
+   * Returns true when the user is permanently unreachable:
+   * - 403: user blocked the bot
+   * - 400 "chat not found": user deleted their Telegram account
    */
-  private isBotBlockedError(error: unknown): boolean {
+  private isUserUnreachableError(error: unknown): boolean {
     if (typeof error !== 'object' || error === null) return false;
     const response = (error as Record<string, unknown>)['response'];
-    if (typeof response === 'object' && response !== null) {
-      return (response as Record<string, unknown>)['error_code'] === 403;
+    if (typeof response !== 'object' || response === null) return false;
+    const r = response as Record<string, unknown>;
+    if (r['error_code'] === 403) return true;
+    if (r['error_code'] === 400) {
+      return typeof r['description'] === 'string' && r['description'].includes('chat not found');
     }
     return false;
   }

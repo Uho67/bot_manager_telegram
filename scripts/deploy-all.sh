@@ -4,7 +4,7 @@ set -euo pipefail
 SSH_HOST="bot_manager"
 INSTANCES=(
   "/var/www/lunvo"
-  "/var/www/sell_bot_nest"
+  "/var/www/steam"
   "/var/www/siga"
 )
 

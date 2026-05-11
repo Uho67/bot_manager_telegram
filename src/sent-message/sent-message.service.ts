@@ -19,7 +19,10 @@ export class SentMessageService {
 
   async bulkInsert(records: SentMessageRecord[]): Promise<void> {
     if (records.length === 0) return;
-    await this.repo.insert(records);
+    const CHUNK = 180;
+    for (let i = 0; i < records.length; i += CHUNK) {
+      await this.repo.insert(records.slice(i, i + CHUNK));
+    }
   }
 
   async markToDeleteByPostId(postId: number): Promise<number> {
